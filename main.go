@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
+	_ "github.com/chapin/search_task/matchers"
 	"github.com/chapin/search_task/search"
-	_ "github.com/chapin/search_task/search"
 )
 
 func init() {

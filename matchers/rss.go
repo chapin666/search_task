@@ -1,7 +1,16 @@
 package matchers
 
-import "encoding/xml"
-import "github.com/chapin/search_task/search"
+import (
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+
+	"regexp"
+
+	"github.com/chapin/search_task/search"
+)
 
 /*
 
@@ -75,10 +84,71 @@ func init() {
 
 // retrieve 发送 HTTP Get 请求获取rss数据源并解码
 func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
-	return nil, nil
+	if feed.URI == "" {
+		return nil, errors.New("No rss feed URI provided")
+	}
+
+	// 从网络获取rss数据源文档
+	resp, err := http.Get(feed.URI)
+	if err != nil {
+		return nil, err
+	}
+
+	// 从函数返回，关闭返回的响应链接
+	defer resp.Body.Close()
+
+	// 是否收到了正确的响应。
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP Response Error %d\n", resp.StatusCode)
+	}
+
+	// 将rss数据源文档解码到结构体
+	var document rssDocument
+	err = xml.NewDecoder(resp.Body).Decode(&document)
+
+	return &document, err
 }
 
 // Search 在文档中查找特定的搜索项
 func (m rssMatcher) Search(feed *search.Feed, searchTerm string) ([]*search.Result, error) {
-	return nil, nil
+
+	var results []*search.Result
+
+	log.Printf("Search Feed Type[%s] Site[%s] For Uri[%s]\n", feed.Type, feed.Name, feed.URI)
+
+	document, err := m.retrieve(feed)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, channelItem := range document.Channel.Item {
+
+		// 检查title部分是否包含搜索
+		matched, err := regexp.MatchString(searchTerm, channelItem.Title)
+		if err != nil {
+			return nil, err
+		}
+
+		if matched {
+			results = append(results, &search.Result{
+				Field:   "Title",
+				Content: channelItem.Title,
+			})
+		}
+
+		// 检查description部分是否包含搜索
+		matched, err = regexp.MatchString(searchTerm, channelItem.Description)
+		if err != nil {
+			return nil, err
+		}
+
+		if matched {
+			results = append(results, &search.Result{
+				Field:   "Description",
+				Content: channelItem.Description,
+			})
+		}
+	}
+
+	return results, nil
 }
